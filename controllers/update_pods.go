@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2019-2023 Apple Inc. and the FoundationDB project authors
+ * Copyright 2018-2026 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -470,13 +470,13 @@ func getPodsToDelete(
 	}
 
 	if deletionMode == fdbv1beta2.PodUpdateModeProcessGroup {
-		for _, zoneProcesses := range updates {
+		for zone, zoneProcesses := range updates {
 			if len(zoneProcesses) < 1 {
 				continue
 			}
-			pod := zoneProcesses[0]
 			// Fetch the first pod and delete it
-			return pod.Name, []*corev1.Pod{pod}, nil
+			pod := zoneProcesses[0]
+			return zone, []*corev1.Pod{pod}, nil
 		}
 	}
 
@@ -548,7 +548,7 @@ func deletePodsForUpdates(
 
 	newContext := logr.NewContext(ctx, logger)
 	if status != nil {
-		newContext = context.WithValue(ctx, fdbstatus.StatusContextKey{}, status)
+		newContext = context.WithValue(newContext, fdbstatus.StatusContextKey{}, status)
 	}
 
 	ready, err := r.PodLifecycleManager.CanDeletePods(newContext, adminClient, cluster)
@@ -573,7 +573,8 @@ func deletePodsForUpdates(
 
 	// If the maintenance mode feature is enabled we have to determine if the maintenance mode must be set. This is only
 	// the case if at least one storage process is in the deletions slice.
-	if deletionMode == fdbv1beta2.PodUpdateModeZone && cluster.UseMaintenaceMode() {
+	if (deletionMode == fdbv1beta2.PodUpdateModeZone || deletionMode == fdbv1beta2.PodUpdateModeProcessGroup) &&
+		cluster.UseMaintenaceMode() {
 		storageProcessIDs := make([]fdbv1beta2.ProcessGroupID, 0, len(deletions))
 		for _, pod := range deletions {
 			if internal.GetProcessClassFromMeta(

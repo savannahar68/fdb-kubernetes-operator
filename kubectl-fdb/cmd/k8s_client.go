@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2020 Apple Inc. and the FoundationDB project authors
+ * Copyright 2018-2026 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ import (
 	applyfdbv1beta2 "github.com/FoundationDB/fdb-kubernetes-operator/v2/api/v1beta2/applyconfiguration/api/v1beta2"
 	"github.com/FoundationDB/fdb-kubernetes-operator/v2/internal"
 	"k8s.io/client-go/rest"
+	"k8s.io/utils/ptr"
 
 	"github.com/go-logr/logr"
 	"github.com/spf13/cobra"
@@ -554,15 +555,14 @@ func chooseRandomPod(pods *corev1.PodList) (*corev1.Pod, error) {
 		return nil, fmt.Errorf("no pods available")
 	}
 
-	var candidate *corev1.Pod
-
-	var tries int
-	for candidate == nil || !candidate.GetDeletionTimestamp().IsZero() || tries > 10 {
-		candidate = &items[rand.IntN(len(items))]
-		tries++
+	for range 10 {
+		candidate := items[rand.IntN(len(items))]
+		if candidate.GetDeletionTimestamp().IsZero() {
+			return ptr.To(candidate), nil
+		}
 	}
 
-	return candidate, nil
+	return nil, fmt.Errorf("could not find a pod without a deletion timestamp after 10 tries")
 }
 
 func fetchPodsOnNode(

@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2020-2021 Apple Inc. and the FoundationDB project authors
+ * Copyright 2018-2026 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -116,7 +116,7 @@ func requiresRecreation(
 	existingService *corev1.Service,
 ) bool {
 	return cluster.IsPodIPFamily6() &&
-		(existingService.Spec.IPFamilies == nil || existingService.Spec.IPFamilies[0] != corev1.IPv6Protocol)
+		(len(existingService.Spec.IPFamilies) == 0 || existingService.Spec.IPFamilies[0] != corev1.IPv6Protocol)
 }
 
 // recreateService removes the existing service and create a new service.

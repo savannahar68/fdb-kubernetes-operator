@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2020-2021 Apple Inc. and the FoundationDB project authors
+ * Copyright 2018-2026 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -69,10 +69,10 @@ func (s updateBackupStatus) reconcile(
 	}
 
 	if currentBackupDeployment != nil && desiredBackupDeployment != nil {
-		status.AgentCount = int(currentBackupDeployment.Status.ReadyReplicas)
-		if status.AgentCount > int(currentBackupDeployment.Status.UpdatedReplicas) {
-			status.AgentCount = int(currentBackupDeployment.Status.UpdatedReplicas)
-		}
+		status.AgentCount = min(
+			int(currentBackupDeployment.Status.ReadyReplicas),
+			int(currentBackupDeployment.Status.UpdatedReplicas),
+		)
 		generationsMatch := currentBackupDeployment.Status.ObservedGeneration == currentBackupDeployment.ObjectMeta.Generation
 
 		annotationChange := internal.MergeAnnotations(

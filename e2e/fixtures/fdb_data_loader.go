@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2023 Apple Inc. and the FoundationDB project authors
+ * Copyright 2018-2026 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"text/template"
@@ -87,11 +88,13 @@ spec:
           - name: LD_LIBRARY_PATH
             value: /var/dynamic/fdb/primary/lib
           - name: FDB_NETWORK_OPTION_TRACE_LOG_GROUP
-            value: {{ .Name }}
+            value: {{ .LogGroup }}
+          - name: FDB_NETWORK_OPTION_TRACE_ENABLE
+            value: /var/log/fdb-trace-logs
           - name: FDB_NETWORK_OPTION_EXTERNAL_CLIENT_DIRECTORY
             value: /var/dynamic/fdb/libs
-          - name: PYTHONUNBUFFERED
-            value: "on"
+          - name: FDB_NETWORK_OPTION_TRACE_FORMAT
+            value: "json"
         volumeMounts:
           - name: config-map
             mountPath: /var/dynamic-conf
@@ -100,6 +103,8 @@ spec:
           - name: fdb-certs
             mountPath: /tmp/fdb-certs
             readOnly: true
+          - name: fdb-trace-logs
+            mountPath: /var/log/fdb-trace-logs
         resources:
          requests:
            cpu: "1"
@@ -164,6 +169,8 @@ spec:
                 path: fdb.cluster
         - name: fdb-libs
           emptyDir: {}
+        - name: fdb-trace-logs
+          emptyDir: {}
         - name: fdb-certs
           secret:
             secretName: {{ .SecretName }}`
@@ -211,11 +218,13 @@ spec:
           - name: LD_LIBRARY_PATH
             value: /var/dynamic/fdb
           - name: FDB_NETWORK_OPTION_TRACE_LOG_GROUP
-            value: {{ .Name }}
+            value: {{ .LogGroup }}
           - name: FDB_NETWORK_OPTION_EXTERNAL_CLIENT_DIRECTORY
             value: /var/dynamic/fdb
-          - name: PYTHONUNBUFFERED
-            value: "on"
+          - name: FDB_NETWORK_OPTION_TRACE_FORMAT
+            value: "json"
+          - name: FDB_NETWORK_OPTION_TRACE_ENABLE
+            value: /var/log/fdb-trace-logs
         volumeMounts:
           - name: config-map
             mountPath: /var/dynamic-conf
@@ -224,6 +233,8 @@ spec:
           - name: fdb-certs
             mountPath: /tmp/fdb-certs
             readOnly: true
+          - name: fdb-trace-logs
+            mountPath: /var/log/fdb-trace-logs
         resources:
          requests:
            cpu: "1"
@@ -285,6 +296,8 @@ spec:
                 path: fdb.cluster
         - name: fdb-libs
           emptyDir: {}
+        - name: fdb-trace-logs
+          emptyDir: {}
         - name: fdb-certs
           secret:
             secretName: {{ .SecretName }}`
@@ -296,8 +309,6 @@ type dataLoaderConfig struct {
 	Name string
 	// Image represents the data loader image that should be used in the Job.
 	Image string
-	// SidecarVersions represents the sidecar configurations for different FoundationDB versions.
-	SidecarVersions []SidecarConfig
 	// Namespace represents the namespace for the Deployment and all associated resources
 	Namespace string
 	// ClusterName the name of the cluster to load data into.
@@ -305,6 +316,10 @@ type dataLoaderConfig struct {
 	// SecretName represents the Kubernetes secret that contains the certificates for communicating with the FoundationDB
 	// cluster.
 	SecretName string
+	// LogGroup defines the log group that should be used for the data loader.
+	LogGroup string
+	// SidecarVersions represents the sidecar configurations for different FoundationDB versions.
+	SidecarVersions []SidecarConfig
 	// DataLoaderArguments defines the arguments that should be passed to the DataLoader
 	DataLoaderArguments []string
 }
@@ -321,6 +336,11 @@ func (factory *Factory) getDataLoaderConfig(
 		ClusterName:         cluster.Name(),
 		SecretName:          factory.GetSecretName(),
 		DataLoaderArguments: arguments,
+		LogGroup: fmt.Sprintf(
+			"%s-%s",
+			cluster.cluster.Spec.LogGroup,
+			dataLoaderName,
+		),
 	}
 }
 
@@ -345,13 +365,14 @@ func getDefaultDataLoaderOptions() *DataLoaderOptions {
 }
 
 // CreateDataLoaderIfAbsent will create the data loader for the provided cluster and load some random data into the cluster.
-func (factory *Factory) CreateDataLoaderIfAbsent(cluster *FdbCluster) {
-	factory.CreateDataLoaderIfAbsentWithOptions(cluster, getDefaultDataLoaderOptions())
+func (factory *Factory) CreateDataLoaderIfAbsent(ctx context.Context, cluster *FdbCluster) {
+	factory.CreateDataLoaderIfAbsentWithOptions(ctx, cluster, getDefaultDataLoaderOptions())
 }
 
 // CreateDataLoaderIfAbsentWithOptions will create the data loader for the provided cluster and load some random data into the cluster.
 // If wait is true, the method will wait until the data loader has finished.
 func (factory *Factory) CreateDataLoaderIfAbsentWithOptions(
+	ctx context.Context,
 	cluster *FdbCluster,
 	options *DataLoaderOptions,
 ) {
@@ -393,7 +414,7 @@ func (factory *Factory) CreateDataLoaderIfAbsentWithOptions(
 		unstructuredObj := &unstructured.Unstructured{Object: unstructuredMap}
 
 		gomega.Expect(
-			factory.CreateIfAbsent(unstructuredObj),
+			factory.CreateIfAbsent(ctx, unstructuredObj),
 		).NotTo(gomega.HaveOccurred())
 	}
 
@@ -401,14 +422,14 @@ func (factory *Factory) CreateDataLoaderIfAbsentWithOptions(
 		return
 	}
 
-	factory.WaitUntilDataLoaderIsDone(cluster)
-	factory.DeleteDataLoader(cluster)
+	factory.WaitUntilDataLoaderIsDone(ctx, cluster)
+	factory.DeleteDataLoader(ctx, cluster)
 }
 
 // DeleteDataLoader will delete the data loader job
-func (factory *Factory) DeleteDataLoader(cluster *FdbCluster) {
+func (factory *Factory) DeleteDataLoader(ctx context.Context, cluster *FdbCluster) {
 	// Remove data loader Pods again, as the loading was done.
-	err := factory.controllerRuntimeClient.Delete(context.Background(), &batchv1.Job{
+	err := factory.controllerRuntimeClient.Delete(ctx, &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      dataLoaderName,
 			Namespace: cluster.Namespace(),
@@ -419,20 +440,20 @@ func (factory *Factory) DeleteDataLoader(cluster *FdbCluster) {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}
 
-	gomega.Expect(factory.controllerRuntimeClient.DeleteAllOf(context.Background(), &corev1.Pod{},
+	gomega.Expect(factory.controllerRuntimeClient.DeleteAllOf(ctx, &corev1.Pod{},
 		client.InNamespace(cluster.Namespace()),
 		client.MatchingLabels(map[string]string{"job-name": dataLoaderName}),
 	)).NotTo(gomega.HaveOccurred())
 }
 
 // WaitUntilDataLoaderIsDone will wait until the data loader Job has finished.
-func (factory *Factory) WaitUntilDataLoaderIsDone(cluster *FdbCluster) {
+func (factory *Factory) WaitUntilDataLoaderIsDone(ctx context.Context, cluster *FdbCluster) {
 	printTime := time.Now()
 	gomega.Eventually(func(g gomega.Gomega) int {
 		pods := &corev1.PodList{}
 		g.Expect(
 			factory.controllerRuntimeClient.List(
-				context.Background(),
+				ctx,
 				pods,
 				client.InNamespace(cluster.Namespace()),
 				client.MatchingLabels(map[string]string{"job-name": dataLoaderName}),
@@ -446,7 +467,7 @@ func (factory *Factory) WaitUntilDataLoaderIsDone(cluster *FdbCluster) {
 			job := &batchv1.Job{}
 			g.Expect(
 				factory.controllerRuntimeClient.Get(
-					context.Background(),
+					ctx,
 					client.ObjectKey{
 						Namespace: cluster.Namespace(),
 						Name:      dataLoaderName,
@@ -495,7 +516,7 @@ func (factory *Factory) WaitUntilDataLoaderIsDone(cluster *FdbCluster) {
 		job := &batchv1.Job{}
 		g.Expect(
 			factory.controllerRuntimeClient.Get(
-				context.Background(),
+				ctx,
 				client.ObjectKey{
 					Namespace: cluster.Namespace(),
 					Name:      dataLoaderName,

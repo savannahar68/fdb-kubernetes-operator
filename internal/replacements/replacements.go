@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2021 Apple Inc. and the FoundationDB project authors
+ * Copyright 2018-2026 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -408,7 +408,7 @@ type containerFileSecurityContext struct {
 // fileSecurityContextChanged checks for changes in the effective security context by checking that there are no changes
 // to the following SecurityContext (or PodSecurityContext) fields:
 // RunAsGroup, RunAsUser, FSGroup, or FSGroupChangePolicy
-// See https://github.com/FoundationDB/fdb-kubernetes-operator/v2/issues/208 for motivation
+// See https://github.com/FoundationDB/fdb-kubernetes-operator/issues/208 for motivation
 // only makes sense if both pods have containers with matching names
 func fileSecurityContextChanged(desired, current *corev1.PodSpec, log logr.Logger) bool {
 	// first check for FSGroup or FSGroupChangePolicy changes as that cannot be overridden at container level

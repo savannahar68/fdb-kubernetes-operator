@@ -1,3 +1,23 @@
+/*
+ * main.go
+ *
+ * This source file is part of the FoundationDB open source project
+ *
+ * Copyright 2018-2026 Apple Inc. and the FoundationDB project authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package main
 
 import (
@@ -37,8 +57,6 @@ type dataLoaderOptions struct {
 	loadDuration time.Duration
 	// clusterFile to connect to the FDB cluster to.
 	clusterFile string
-	// shutdown if set to false the data loader will not shutdown after load is done.
-	shutdown bool
 }
 
 // latencyStats represents a simplified latency metrics tracker.
@@ -83,7 +101,6 @@ func loadData(ctx context.Context, options *dataLoaderOptions) {
 			writeStats.count, writeStats.avg(), writeStats.min, writeStats.max)
 		log.Printf("reads  — count: %d, avg: %s, min: %s, max: %s",
 			readStats.count, readStats.avg(), readStats.min, readStats.max)
-
 	}()
 	batchCount := options.keys / options.batchSize
 
@@ -193,11 +210,6 @@ func loadData(ctx context.Context, options *dataLoaderOptions) {
 			readStats.record(time.Since(readStart))
 		}
 	}
-
-	if !options.shutdown {
-		// Block until signal is received
-		<-ctx.Done()
-	}
 }
 
 func getUuid(randomGen *rand.ChaCha8) (tuple.UUID, error) {
@@ -260,6 +272,10 @@ func main() {
 		readBatchSize: readBatchSize,
 		loadDuration:  loadDuration,
 		clusterFile:   clusterFile,
-		shutdown:      shutdown,
 	})
+
+	if !shutdown {
+		// Block until signal is received
+		<-ctx.Done()
+	}
 }

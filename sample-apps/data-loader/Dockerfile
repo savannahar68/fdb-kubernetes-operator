@@ -2,7 +2,7 @@ ARG FDB_VERSION=7.1.67
 ARG FDB_WEBSITE=https://github.com/apple/foundationdb/releases/download
 
 # Build the manager binary
-FROM golang:1.25.7-bookworm AS builder
+FROM golang:1.26.4-bookworm AS builder
 
 ARG FDB_VERSION
 ARG FDB_WEBSITE
@@ -40,13 +40,14 @@ COPY main.go main.go
 # Build
 RUN CGO_ENABLED=1 GOOS=linux GOARCH=${TARGETARCH} GO111MODULE=on go build -o /workspace/bin/data-loader main.go
 
-FROM rockylinux/rockylinux:9.6-minimal
+FROM rockylinux/rockylinux:9.8-minimal
 
 ARG FDB_VERSION
 ARG FDB_WEBSITE
 ARG TARGETARCH
 
 VOLUME /usr/lib/fdb
+VOLUME /var/log/fdb-trace-logs
 
 WORKDIR /
 
@@ -88,7 +89,7 @@ COPY --chown=fdb:fdb --from=builder /workspace/bin/data-loader /usr/local/bin/da
 USER 4059
 
 # Enable tracing per default.
-ENV FDB_NETWORK_OPTION_TRACE_ENABLE=/var/log/fdb
+ENV FDB_NETWORK_OPTION_TRACE_ENABLE=/var/log/fdb-trace-logs
 ENV FDB_NETWORK_OPTION_TRACE_LOG_GROUP=fdb-data-loader
 
 ENTRYPOINT ["/usr/local/bin/data-loader"]

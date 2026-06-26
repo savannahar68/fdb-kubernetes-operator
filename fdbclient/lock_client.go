@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2018-2025 Apple Inc. and the FoundationDB project authors
+ * Copyright 2018-2026 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -78,42 +78,30 @@ func (client *realLockClient) takeLockInTransaction(transaction fdb.Transaction)
 		return nil
 	}
 
-	lockTuple, err := tuple.Unpack(lockValue)
+	currentLockOwnerID, currentLockStartTimestamp, currentLockEndTimestamp, err := unpackLockValue(
+		lockKey,
+		lockValue,
+	)
 	if err != nil {
 		return err
-	}
-
-	if len(lockTuple) < 3 {
-		return invalidLockValue{key: lockKey, value: lockValue}
-	}
-
-	currentLockOwnerID, valid := lockTuple[0].(string)
-	if !valid {
-		return invalidLockValue{key: lockKey, value: lockValue}
-	}
-
-	currentLockStartTime, valid := lockTuple[1].(int64)
-	if !valid {
-		return invalidLockValue{key: lockKey, value: lockValue}
-	}
-
-	currentLockEndTime, valid := lockTuple[2].(int64)
-	if !valid {
-		return invalidLockValue{key: lockKey, value: lockValue}
 	}
 
 	// ownerID represents the current cluster ID. If a lock is present the currentLockOwnerID represents the operator
 	// instance holding the lock.
 	ownerID := client.cluster.GetLockID()
 
-	endTime := time.Unix(currentLockEndTime, 0)
+	endTime := time.Unix(currentLockEndTimestamp, 0)
 	logger := client.log.WithValues(
 		"currentLockOwnerID", currentLockOwnerID,
-		"startTime", time.Unix(currentLockStartTime, 0),
+		"startTime", time.Unix(currentLockStartTimestamp, 0),
 		"endTime", endTime)
 
-	newOwnerDenied := transaction.Get(client.getDenyListKey(ownerID)).MustGet() != nil
-	if newOwnerDenied {
+	newOwnerDenied, err := transaction.Get(client.getDenyListKey(ownerID)).Get()
+	if err != nil {
+		return err
+	}
+
+	if newOwnerDenied != nil {
 		logger.Info("Failed to get lock due to deny list")
 		return fmt.Errorf(
 			"failed to get lock due to deny list, owner ID: %s is on deny list",
@@ -121,17 +109,20 @@ func (client *realLockClient) takeLockInTransaction(transaction fdb.Transaction)
 		)
 	}
 
-	oldOwnerDenied := transaction.Get(client.getDenyListKey(currentLockOwnerID)).MustGet() != nil
+	oldOwnerDenied, err := transaction.Get(client.getDenyListKey(currentLockOwnerID)).Get()
+	if err != nil {
+		return err
+	}
 
-	if currentLockEndTime < time.Now().Unix() || oldOwnerDenied {
+	if currentLockEndTimestamp < time.Now().Unix() || oldOwnerDenied != nil {
 		logger.Info("Clearing expired lock")
-		client.updateLock(transaction, currentLockStartTime)
+		client.updateLock(transaction, currentLockStartTimestamp)
 		return nil
 	}
 
 	if currentLockOwnerID == ownerID {
 		logger.Info("Extending previous lock")
-		client.updateLock(transaction, currentLockStartTime)
+		client.updateLock(transaction, currentLockStartTimestamp)
 		return nil
 	}
 
@@ -195,9 +186,8 @@ func (client *realLockClient) GetPendingUpgrades(
 ) (map[fdbv1beta2.ProcessGroupID]bool, error) {
 	var upgrades map[fdbv1beta2.ProcessGroupID]bool
 	_, err := client.fdbLibClient.executeTransaction(func(tr fdb.Transaction) (any, error) {
-		keyPrefix := []byte(
-			fmt.Sprintf("%s/upgrades/%s/", client.cluster.GetLockPrefix(), version.String()),
-		)
+		keyPrefix :=
+			fmt.Appendf(nil, "%s/upgrades/%s/", client.cluster.GetLockPrefix(), version.String())
 		keyRange, err := fdb.PrefixRange(keyPrefix)
 		if err != nil {
 			return nil, err
@@ -218,7 +208,7 @@ func (client *realLockClient) GetPendingUpgrades(
 // upgrades.
 func (client *realLockClient) ClearPendingUpgrades() error {
 	_, err := client.fdbLibClient.executeTransaction(func(tr fdb.Transaction) (any, error) {
-		keyPrefix := []byte(fmt.Sprintf("%s/upgrades/", client.cluster.GetLockPrefix()))
+		keyPrefix := fmt.Appendf(nil, "%s/upgrades/", client.cluster.GetLockPrefix())
 		keyRange, err := fdb.PrefixRange(keyPrefix)
 		if err != nil {
 			return nil, err
@@ -279,7 +269,7 @@ func (client *realLockClient) UpdateDenyList(locks []fdbv1beta2.LockDenyListEntr
 
 // getDenyListKeyRange defines a key range containing the full deny list.
 func (client *realLockClient) getDenyListKeyRange() (fdb.KeyRange, error) {
-	return fdb.PrefixRange([]byte(fmt.Sprintf("%s/denyList/", client.cluster.GetLockPrefix())))
+	return fdb.PrefixRange(fmt.Appendf(nil, "%s/denyList/", client.cluster.GetLockPrefix()))
 }
 
 // getDenyListKeyRange defines a key range containing a potential deny list
@@ -303,24 +293,12 @@ func (client *realLockClient) ReleaseLock() error {
 			return nil, nil
 		}
 
-		lockTuple, err := tuple.Unpack(lockValue)
+		currentLockOwnerID, currentLockStartTimestamp, currentLockEndTimestamp, err := unpackLockValue(
+			lockKey,
+			lockValue,
+		)
 		if err != nil {
 			return nil, err
-		}
-
-		currentLockOwnerID, valid := lockTuple[0].(string)
-		if !valid {
-			return nil, invalidLockValue{key: lockKey, value: lockValue}
-		}
-
-		currentLockStartTimestamp, valid := lockTuple[1].(int64)
-		if !valid {
-			return nil, invalidLockValue{key: lockKey, value: lockValue}
-		}
-
-		currentLockEndTimestamp, valid := lockTuple[2].(int64)
-		if !valid {
-			return nil, invalidLockValue{key: lockKey, value: lockValue}
 		}
 
 		ownerID := client.cluster.GetLockID()
@@ -355,6 +333,35 @@ func (client *realLockClient) ReleaseLock() error {
 		return nil, nil
 	})
 	return err
+}
+
+// unpackLockValue will unpack the lock value and cast the tuple values into the expected types.
+func unpackLockValue(lockKey fdb.Key, lockValue []byte) (string, int64, int64, error) {
+	lockTuple, err := tuple.Unpack(lockValue)
+	if err != nil {
+		return "", 0, 0, err
+	}
+
+	if len(lockTuple) < 3 {
+		return "", 0, 0, invalidLockValue{key: lockKey, value: lockValue}
+	}
+
+	currentLockOwnerID, valid := lockTuple[0].(string)
+	if !valid {
+		return "", 0, 0, invalidLockValue{key: lockKey, value: lockValue}
+	}
+
+	currentLockStartTimestamp, valid := lockTuple[1].(int64)
+	if !valid {
+		return "", 0, 0, invalidLockValue{key: lockKey, value: lockValue}
+	}
+
+	currentLockEndTimestamp, valid := lockTuple[2].(int64)
+	if !valid {
+		return "", 0, 0, invalidLockValue{key: lockKey, value: lockValue}
+	}
+
+	return currentLockOwnerID, currentLockStartTimestamp, currentLockEndTimestamp, nil
 }
 
 // invalidLockValue is an error we can return when we cannot parse the existing

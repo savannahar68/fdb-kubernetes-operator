@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2020-2021 Apple Inc. and the FoundationDB project authors
+ * Copyright 2018-2026 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -153,6 +153,10 @@ type FoundationDBClusterReconciler struct {
 	MinimumAgeForTerminalPodDeletion time.Duration
 	// Defines the threshold for the high run loop busy condition, the default is 1.0.
 	HighRunLoopBusyThreshold float64
+	// AllowedPodModifications defines the pod modification that are allowed for the user provided configuration. If a field
+	// is unset in AllowedPodModifications, we allow everything to not break the current setups. In a new major release we could
+	// change this and enforce that fields are only allowed to change if the according AllowedPodModifications is set.
+	AllowedPodModifications *fdbv1beta2.AllowedPodModifications
 }
 
 // NewFoundationDBClusterReconciler creates a new FoundationDBClusterReconciler with defaults.
@@ -222,7 +226,7 @@ func (r *FoundationDBClusterReconciler) Reconcile(
 		return ctrl.Result{}, err
 	}
 
-	err = cluster.Validate()
+	err = cluster.Validate(r.AllowedPodModifications)
 	if err != nil {
 		r.Recorder.Event(cluster, corev1.EventTypeWarning, "ClusterSpec not valid", err.Error())
 		return ctrl.Result{}, fmt.Errorf("ClusterSpec is not valid: %w", err)
@@ -531,8 +535,8 @@ func (r *FoundationDBClusterReconciler) findFoundationDBClusterForNode(
 	logger.V(1).
 		Info("Processing findFoundationDBClusterForNode, found Pods on node that changed", "labelSelector", r.ClusterLabelKeyForNodeTrigger, "podsOnNode", len(podsOnNode.Items))
 
-	requests := make([]reconcile.Request, len(podsOnNode.Items))
-	for i, item := range podsOnNode.Items {
+	requests := make([]reconcile.Request, 0, len(podsOnNode.Items))
+	for _, item := range podsOnNode.Items {
 		// Since we use a label selector all Pods should have the cluster label.
 		clusterName, ok := item.GetLabels()[r.ClusterLabelKeyForNodeTrigger]
 		if !ok {
@@ -542,12 +546,12 @@ func (r *FoundationDBClusterReconciler) findFoundationDBClusterForNode(
 
 		logger.V(1).
 			Info("Processing findFoundationDBClusterForNode, found cluster that needs an update", "triggeringPod", item.Name, "clusterName", clusterName)
-		requests[i] = reconcile.Request{
+		requests = append(requests, reconcile.Request{
 			NamespacedName: types.NamespacedName{
 				Name:      clusterName,
 				Namespace: item.GetNamespace(),
 			},
-		}
+		})
 	}
 
 	return requests

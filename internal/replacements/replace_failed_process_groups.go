@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2021 Apple Inc. and the FoundationDB project authors
+ * Copyright 2018-2026 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -216,7 +216,7 @@ func ReplaceFailedProcessGroups(
 		// Only if localities are not used for exclusions we should be skipping the exclusion.
 		// Skipping the exclusion could lead to a race condition, which can be prevented if
 		// we are able to exclude by locality.
-		// see: https://github.com/FoundationDB/fdb-kubernetes-operator/v2/issues/1890
+		// see: https://github.com/FoundationDB/fdb-kubernetes-operator/issues/1890
 		if len(processGroup.Addresses) == 0 && !localitiesUsedForExclusion {
 			if !hasDesiredFaultTolerance {
 				logger.Info(

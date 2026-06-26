@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2021-2022 Apple Inc. and the FoundationDB project authors
+ * Copyright 2018-2026 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -440,6 +440,12 @@ type FoundationDBStatusBackupTag struct {
 
 	// LastRestorableSecondsBehind indicates how many versions behind the last restorable point-in-time for the backup is.
 	LastRestorableVersion *int64 `json:"last_restorable_version,omitempty"`
+
+	// MutationLogBytesWritten total size of mutation log files produced by the backup
+	MutationLogBytesWritten *int64 `json:"mutation_log_bytes_written,omitempty"`
+
+	// RangeBytesWritten indicates the total size of snapshot (range) files produced by the backup
+	RangeBytesWritten *int64 `json:"range_bytes_written,omitempty"`
 }
 
 // FoundationDBStatusLogInfo provides information about the fault tolerance metrics

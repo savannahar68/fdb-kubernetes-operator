@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2019 Apple Inc. and the FoundationDB project authors
+ * Copyright 2018-2026 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -4200,6 +4200,49 @@ var _ = Describe("pod_models", func() {
 					).To(HavePrefix(fdbv1beta2.FoundationDBBaseImage))
 				},
 			)
+		})
+
+		Context("with a custom init container in the pod template", func() {
+			BeforeEach(func() {
+				backup.Spec.PodTemplateSpec = &corev1.PodTemplateSpec{
+					Spec: corev1.PodSpec{
+						InitContainers: []corev1.Container{
+							{
+								Name:  "custom-init",
+								Image: "custom-init:latest",
+							},
+						},
+					},
+				}
+				deployment, err = GetBackupDeployment(backup)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(deployment).NotTo(BeNil())
+			})
+
+			It("should have two init containers", func() {
+				Expect(deployment.Spec.Template.Spec.InitContainers).To(HaveLen(2))
+			})
+
+			It("should preserve the custom init container as the first init container", func() {
+				Expect(
+					deployment.Spec.Template.Spec.InitContainers[0].Name,
+				).To(Equal("custom-init"))
+				Expect(
+					deployment.Spec.Template.Spec.InitContainers[0].Image,
+				).To(Equal("custom-init:latest"))
+				Expect(deployment.Spec.Template.Spec.InitContainers[0].Args).To(BeEmpty())
+			})
+
+			It("should configure the FDB init container as the last init container", func() {
+				initContainer := deployment.Spec.Template.Spec.InitContainers[1]
+				Expect(initContainer.Name).To(Equal(fdbv1beta2.InitContainerName))
+				Expect(initContainer.Args).To(ContainElements(
+					"--copy-file",
+					"fdb.cluster",
+					"--require-not-empty",
+					"fdb.cluster",
+				))
+			})
 		})
 	})
 

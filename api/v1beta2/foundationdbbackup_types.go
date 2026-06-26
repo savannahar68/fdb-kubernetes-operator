@@ -1,22 +1,27 @@
 /*
-Copyright 2020-2026 FoundationDB project authors.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+ * foundationdbbackup_types.go
+ *
+ * This source file is part of the FoundationDB open source project
+ *
+ * Copyright 2018-2026 Apple Inc. and the FoundationDB project authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 package v1beta2
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -30,7 +35,7 @@ import (
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:shortName=fdbbackup
 // +kubebuilder:subresource:status
-// +kubebuilder:metadata:annotations="foundationdb.org/release=v2.26.0"
+// +kubebuilder:metadata:annotations="foundationdb.org/release=v2.30.0"
 // +kubebuilder:printcolumn:name="Generation",type="integer",JSONPath=".metadata.generation",description="Latest generation of the spec",priority=0
 // +kubebuilder:printcolumn:name="Reconciled",type="integer",JSONPath=".status.generations.reconciled",description="Last reconciled generation of the spec",priority=0
 // +kubebuilder:printcolumn:name="Restorable",type="boolean",JSONPath=".status.backupDetails.restorable",description="If the backup is restorable",priority=0
@@ -397,8 +402,14 @@ type FoundationDBLiveBackupStatus struct {
 // FoundationDBLiveBackupStatusState provides the state of a backup in the
 // backup status.
 type FoundationDBLiveBackupStatusState struct {
+	// Name is the name of the backup state.
+	Name string `json:"Name,omitempty"`
+
 	// Running determines whether the backup is currently running.
 	Running bool `json:"Running,omitempty"`
+
+	// Completed determines whether the backup has completed.
+	Completed bool `json:"Completed,omitempty"`
 }
 
 // LatestRestorablePoint contains information about the latest restorable point if any exists.
@@ -509,6 +520,31 @@ func (backup *FoundationDBBackup) GetBackupMode() BackupMode {
 // UseUnifiedImage returns true if the unified image should be used.
 func (backup *FoundationDBBackup) UseUnifiedImage() bool {
 	return ptr.Deref(backup.Spec.ImageType, ImageTypeUnified) == ImageTypeUnified
+}
+
+// Validate checks if all settings in the FoundationDBBackup are valid, if not an error will be returned.
+// If multiple issues are found all of them will be returned in a single error.
+func (backup *FoundationDBBackup) Validate(allowedPodModifications *AllowedPodModifications) error {
+	var validations []string
+
+	if backup.Spec.PodTemplateSpec != nil {
+		err := PodSpecIsSanitized(&backup.Spec.PodTemplateSpec.Spec, allowedPodModifications)
+		if err != nil {
+			validations = append(
+				validations,
+				fmt.Sprintf(
+					"Forbidden PodSpec: %s",
+					err,
+				),
+			)
+		}
+	}
+
+	if len(validations) == 0 {
+		return nil
+	}
+
+	return errors.New(strings.Join(validations, ", "))
 }
 
 // parseAccountName will parse the accountName and return a *url.URL for the getURL method.

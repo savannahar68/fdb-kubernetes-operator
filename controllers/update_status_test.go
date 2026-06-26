@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2020 Apple Inc. and the FoundationDB project authors
+ * Copyright 2018-2026 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -735,6 +735,90 @@ var _ = Describe("update_status", func() {
 					Expect(cluster.Status.ProcessGroups).To(HaveLen(17))
 				})
 			})
+		})
+
+		When("a process has an empty command line", func() {
+			JustBeforeEach(func() {
+				processes := processMap[pickedProcessGroup.ProcessGroupID]
+				for i := range processes {
+					processes[i].CommandLine = ""
+				}
+				processMap[pickedProcessGroup.ProcessGroupID] = processes
+			})
+
+			It(
+				"should get the MissingProcesses condition and not the IncorrectCommandLine condition",
+				func() {
+					err := validateProcessGroups(
+						context.TODO(),
+						clusterReconciler,
+						cluster,
+						&cluster.Status,
+						processMap,
+						configMap,
+						logger,
+						"",
+					)
+					Expect(err).NotTo(HaveOccurred())
+
+					missingProcesses := fdbv1beta2.FilterByCondition(
+						cluster.Status.ProcessGroups,
+						fdbv1beta2.MissingProcesses,
+						false,
+					)
+					Expect(missingProcesses).To(ConsistOf(pickedProcessGroup.ProcessGroupID))
+
+					incorrectCommandLine := fdbv1beta2.FilterByCondition(
+						cluster.Status.ProcessGroups,
+						fdbv1beta2.IncorrectCommandLine,
+						false,
+					)
+					Expect(incorrectCommandLine).To(BeEmpty())
+					Expect(cluster.Status.ProcessGroups).To(HaveLen(17))
+				},
+			)
+		})
+
+		When("a process has an empty version", func() {
+			JustBeforeEach(func() {
+				processes := processMap[pickedProcessGroup.ProcessGroupID]
+				for i := range processes {
+					processes[i].Version = ""
+				}
+				processMap[pickedProcessGroup.ProcessGroupID] = processes
+			})
+
+			It(
+				"should get the MissingProcesses condition and not the IncorrectCommandLine condition",
+				func() {
+					err := validateProcessGroups(
+						context.TODO(),
+						clusterReconciler,
+						cluster,
+						&cluster.Status,
+						processMap,
+						configMap,
+						logger,
+						"",
+					)
+					Expect(err).NotTo(HaveOccurred())
+
+					missingProcesses := fdbv1beta2.FilterByCondition(
+						cluster.Status.ProcessGroups,
+						fdbv1beta2.MissingProcesses,
+						false,
+					)
+					Expect(missingProcesses).To(ConsistOf(pickedProcessGroup.ProcessGroupID))
+
+					incorrectCommandLine := fdbv1beta2.FilterByCondition(
+						cluster.Status.ProcessGroups,
+						fdbv1beta2.IncorrectCommandLine,
+						false,
+					)
+					Expect(incorrectCommandLine).To(BeEmpty())
+					Expect(cluster.Status.ProcessGroups).To(HaveLen(17))
+				},
+			)
 		})
 
 		When("a process group is not reporting to the cluster", func() {
@@ -1726,7 +1810,7 @@ var _ = Describe("update_status", func() {
 			var unknownID fdbv1beta2.ProcessGroupID
 
 			BeforeEach(func() {
-				unknownID = "storage-99"
+				unknownID = "storage-999999"
 				pod := &corev1.Pod{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      fmt.Sprintf("%s-%s", cluster.Name, unknownID),
@@ -1757,7 +1841,7 @@ var _ = Describe("update_status", func() {
 
 		When("a pod with an unknown process group ID is being deleted", func() {
 			BeforeEach(func() {
-				unknownID := fdbv1beta2.ProcessGroupID("storage-99")
+				unknownID := fdbv1beta2.ProcessGroupID("storage-999999")
 				pod := &corev1.Pod{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      fmt.Sprintf("%s-%s", cluster.Name, unknownID),
@@ -1787,7 +1871,7 @@ var _ = Describe("update_status", func() {
 			var unknownID fdbv1beta2.ProcessGroupID
 
 			BeforeEach(func() {
-				unknownID = "storage-99"
+				unknownID = "storage-999999"
 				pvc := &corev1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      fmt.Sprintf("%s-%s", cluster.Name, unknownID),
@@ -1818,7 +1902,7 @@ var _ = Describe("update_status", func() {
 
 		When("a PVC with an unknown process group ID is being deleted", func() {
 			BeforeEach(func() {
-				unknownID := fdbv1beta2.ProcessGroupID("storage-99")
+				unknownID := fdbv1beta2.ProcessGroupID("storage-999999")
 				pvc := &corev1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      fmt.Sprintf("%s-%s", cluster.Name, unknownID),
@@ -1848,7 +1932,7 @@ var _ = Describe("update_status", func() {
 			var unknownID fdbv1beta2.ProcessGroupID
 
 			BeforeEach(func() {
-				unknownID = "storage-99"
+				unknownID = "storage-999999"
 				svc := &corev1.Service{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      fmt.Sprintf("%s-%s", cluster.Name, unknownID),
@@ -1900,7 +1984,7 @@ var _ = Describe("update_status", func() {
 
 		When("a service with an unknown process group ID is being deleted", func() {
 			BeforeEach(func() {
-				unknownID := fdbv1beta2.ProcessGroupID("storage-99")
+				unknownID := fdbv1beta2.ProcessGroupID("storage-999999")
 				svc := &corev1.Service{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      fmt.Sprintf("%s-%s", cluster.Name, unknownID),
@@ -1930,7 +2014,7 @@ var _ = Describe("update_status", func() {
 			var unknownID fdbv1beta2.ProcessGroupID
 
 			BeforeEach(func() {
-				unknownID = "storage-99"
+				unknownID = "storage-999999"
 				pod := &corev1.Pod{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      fmt.Sprintf("%s-%s", cluster.Name, unknownID),

@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2021-2022 Apple Inc. and the FoundationDB project authors
+ * Copyright 2018-2026 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -506,9 +506,22 @@ var _ = Describe("FoundationDBStatus", func() {
 				},
 			},
 			Layers: FoundationDBStatusLayerInfo{
-				Valid:  ptr.To(true),
-				Backup: FoundationDBStatusBackupInfo{Paused: false, Tags: nil},
-				Error:  "",
+				Valid: ptr.To(true),
+				Backup: FoundationDBStatusBackupInfo{
+					Paused: false,
+					Tags: map[string]FoundationDBStatusBackupTag{
+						"default": {
+							CurrentContainer:            "blobstore://backup@host:443/test-backup",
+							RunningBackup:               ptr.To(true),
+							Restorable:                  ptr.To(true),
+							LastRestorableSecondsBehind: ptr.To(3.5),
+							LastRestorableVersion:       ptr.To[int64](12345678),
+							MutationLogBytesWritten:     ptr.To[int64](1048576),
+							RangeBytesWritten:           ptr.To[int64](2097152),
+						},
+					},
+				},
+				Error: "",
 			},
 			Logs: []FoundationDBStatusLogInfo{
 				{

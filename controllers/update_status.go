@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2019-2021 Apple Inc. and the FoundationDB project authors
+ * Copyright 2018-2026 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"time"
 
@@ -378,7 +379,7 @@ func checkAndSetProcessStatus(
 	// later by validating additional messages in the machine-readable status.
 	if len(processMap) == 0 {
 		// TODO (johscheuer): Should we reset the exclusion state if the processes are missing? In this case we cannot
-		// know if the process was fully excluded or not and we could run into issues like: https://github.com/FoundationDB/fdb-kubernetes-operator/v2/issues/1912
+		// know if the process was fully excluded or not and we could run into issues like: https://github.com/FoundationDB/fdb-kubernetes-operator/issues/1912
 		// This change needs some additional testing to ensure we understand the possible side effects.
 		return nil
 	}
@@ -460,6 +461,29 @@ func checkAndSetProcessStatus(
 				continue
 			}
 
+			// If the process.CommandLine or process.Version fields are empty something is wrong with the process, so
+			// we assume the process is "missing". If the process is long enough in this state the operator will
+			// replace the faulty process.
+			if process.CommandLine == "" {
+				hasMissingProcesses = true
+				logger.Info(
+					"found process with missing commandline information",
+					"processGroupID",
+					processGroupStatus.ProcessGroupID,
+				)
+				continue
+			}
+
+			if process.Version == "" {
+				hasMissingProcesses = true
+				logger.Info(
+					"found process with missing version information",
+					"processGroupID",
+					processGroupStatus.ProcessGroupID,
+				)
+				continue
+			}
+
 			commandLine, err := internal.GetStartCommandWithSubstitutions(
 				cluster,
 				processGroupStatus.ProcessClass,
@@ -475,7 +499,7 @@ func checkAndSetProcessStatus(
 
 			// If the new command line is longer than 10.000 characters we will throw an error to make sure the operator
 			// is not restarting the cluster the whole time.
-			// See https://github.com/FoundationDB/fdb-kubernetes-operator/v2/issues/2105
+			// See: https://github.com/FoundationDB/fdb-kubernetes-operator/issues/2105
 			if len(commandLine) > 10000 {
 				r.Recorder.Event(
 					cluster,
@@ -674,13 +698,7 @@ func validateProcessGroups(
 		status.AddServersPerDisk(processCount, processGroup.ProcessClass)
 
 		imageType := internal.GetImageType(pod)
-		imageTypeFound := false
-		for _, currentImageType := range status.ImageTypes {
-			if imageType == currentImageType {
-				imageTypeFound = true
-				break
-			}
-		}
+		imageTypeFound := slices.Contains(status.ImageTypes, imageType)
 		if !imageTypeFound {
 			status.ImageTypes = append(status.ImageTypes, imageType)
 		}
@@ -1204,10 +1222,15 @@ func hasExactMatchedTaintKey(
 	nodeTaintKey string,
 ) bool {
 	for _, configuredTaintKey := range taintReplacementOptions {
-		if *configuredTaintKey.Key == nodeTaintKey {
+		if configuredTaintKey.Key == nil {
+			continue
+		}
+
+		if ptr.Deref(configuredTaintKey.Key, "") == nodeTaintKey {
 			return true
 		}
 	}
+
 	return false
 }
 

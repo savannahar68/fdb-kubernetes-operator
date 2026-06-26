@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2019-2021 Apple Inc. and the FoundationDB project authors
+ * Copyright 2018-2026 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -331,7 +331,7 @@ func (e excludeProcesses) reconcile(
 	// Only if a coordinator was excluded we have to check for an error and update the cluster.
 	if coordinatorExcluded {
 		// If a coordinator should be excluded, we will change the coordinators directly after the exclusion.
-		// This should reduce the observed recoveries, see: https://github.com/FoundationDB/fdb-kubernetes-operator/v2/issues/2018.
+		// This should reduce the observed recoveries, see: https://github.com/FoundationDB/fdb-kubernetes-operator/issues/2018.
 		coordinatorErr := coordinator.ChangeCoordinators(logger, adminClient, cluster, status)
 		if coordinatorErr != nil {
 			return &requeue{curError: coordinatorErr, delayedRequeue: true}
